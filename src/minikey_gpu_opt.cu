@@ -212,31 +212,55 @@ __device__ void scalarMulG_naive(const unsigned int k[8], unsigned int outX[8], 
 }
 
 // ============================ OTIMIZACAO 1: COMB =============================
-// Tabela de base fixa: d_comb[(i*256 + j)*16 + 0..7] = X, +8..15 = Y  do ponto
-// (j << 8i)*G, em coordenadas afim. 32 janelas (8 bits) x 256 digitos = 512 KB.
-#define NWIN 32
-__device__ unsigned int d_comb[NWIN*256*16];
+// Comb de base fixa PARAMETRIZADO pela largura de janela WBITS (estudo de janela
+// maior). Tabela g_comb[(i*NDIG + j)*16]: X em [0..7], Y em [8..15], do ponto
+// (j << WBITS*i)*G (afim). NWIN janelas de WBITS bits; cada k*G = <=(NWIN-1) somas
+// e ZERO duplicacoes. Janela maior => menos somas (ao custo de tabela maior =>
+// estudo de hierarquia de memoria). Tabela gerada na GPU pela rotina ingenua ja
+// validada => bit-exata por construcao. (WBITS=8 reproduz o comportamento original.)
+#ifndef WBITS
+#define WBITS 8
+#endif
+#define NWIN  ((256 + WBITS - 1) / WBITS)
+#define NDIG  (1u << WBITS)
+#define WMASK (NDIG - 1u)
+__device__ unsigned int *g_comb;          // tabela (cudaMalloc no host), ponteiro device
+
+// extrai WBITS bits de k (8 words big-endian, k[0]=MSW) a partir do bit p (LSB=0)
+__device__ __forceinline__ unsigned int combDigit(const unsigned int k[8], int p){
+    int lw=p>>5, bit=p&31;
+    unsigned long long lo=k[7-lw];
+    unsigned long long hi=(lw+1<8)?(unsigned long long)k[7-lw-1]:0ull;
+    return (unsigned int)(((lo|(hi<<32))>>bit)&WMASK);
+}
 
 __global__ void kBuildComb(){
-    int i=blockIdx.x;      // janela 0..31 (byte i, do menos significativo)
-    int j=threadIdx.x;     // digito 0..255
-    unsigned int *T=d_comb+((i*256+j)*16);
-    if(j==0){ for(int t=0;t<16;t++) T[t]=0; return; }   // 0*G = infinito (nao usado)
-    unsigned int k[8]; for(int t=0;t<8;t++) k[t]=0;
-    int wi=7-(i>>2), sh=8*(i&3);                          // k big-endian: k[0]=MSW
-    k[wi]=((unsigned int)j)<<sh;
+    int i=blockIdx.x;                                     // janela
+    unsigned int j=blockIdx.y*blockDim.x+threadIdx.x;     // digito
+    if(j>=NDIG) return;
+    unsigned int *T=g_comb+(((size_t)i*NDIG+j)*16);
+    if(j==0){ for(int t=0;t<16;t++) T[t]=0; return; }     // 0 (nao usado)
+    // monta o escalar (j << WBITS*i) em 8 words big-endian; se estourar 256 bits,
+    // a entrada nunca e indexada (digito da janela de topo e pequeno) -> zera.
+    int base=WBITS*i, lw=base>>5, bit=base&31;
+    unsigned long long val=((unsigned long long)j)<<bit;
+    unsigned int w0=(unsigned int)val, w1=(unsigned int)(val>>32);
+    unsigned int k[8]; for(int t=0;t<8;t++) k[t]=0; bool ovf=false;
+    if(lw<8) k[7-lw]=w0; else if(w0) ovf=true;
+    if(w1){ if(lw+1<8) k[7-lw-1]=w1; else ovf=true; }
+    if(ovf){ for(int t=0;t<16;t++) T[t]=0; return; }
     unsigned int x[8],y[8]; scalarMulG_naive(k,x,y);
     for(int t=0;t<8;t++){ T[t]=x[t]; T[8+t]=y[t]; }
 }
 
-// k*G via comb -> Jacobiano (sem inversao final; p/ lote). <=31 somas, 0 duplicacoes.
+// k*G via comb -> Jacobiano (sem inversao final; p/ lote).
 __device__ void combJac(const unsigned int k[8], unsigned int X[8],unsigned int Y[8],unsigned int Z[8]){
     for(int i=0;i<8;i++){X[i]=0;Y[i]=0;Z[i]=0;}          // infinito
     unsigned int nX[8],nY[8],nZ[8];
     for(int i=0;i<NWIN;i++){
-        unsigned int digit=(k[7-(i>>2)]>>(8*(i&3)))&0xFF;
+        unsigned int digit=combDigit(k,WBITS*i);
         if(digit){
-            const unsigned int *T=d_comb+((i*256+digit)*16);
+            const unsigned int *T=g_comb+(((size_t)i*NDIG+digit)*16);
             jacAddAffine(X,Y,Z,T,T+8,nX,nY,nZ);
             setField(X,nX);setField(Y,nY);setField(Z,nZ);
         }
@@ -416,8 +440,12 @@ static std::string rateStr(double r){ char b[48]; if(r>=1e9) sprintf(b,"%.3f G",
 static const char* tcol(unsigned int t){ return t>=85?Cr : (t>=75?Cy:Cg); }
 
 static void buildCombHost(){
-    kBuildComb<<<NWIN,256>>>(); cudaDeviceSynchronize();
-    cudaError_t e=cudaGetLastError(); if(e){ printf("ERRO ao gerar a tabela comb: %s\n",cudaGetErrorString(e)); exit(1); }
+    size_t bytes=(size_t)NWIN*NDIG*16*sizeof(unsigned int);
+    unsigned int *d_ptr; cudaError_t e=cudaMalloc(&d_ptr,bytes);
+    if(e){ printf("ERRO cudaMalloc tabela comb (%zu MB): %s\n",bytes>>20,cudaGetErrorString(e)); exit(1); }
+    cudaMemcpyToSymbol(g_comb,&d_ptr,sizeof(d_ptr));
+    dim3 grid(NWIN,(NDIG+255)/256); kBuildComb<<<grid,256>>>(); cudaDeviceSynchronize();
+    e=cudaGetLastError(); if(e){ printf("ERRO ao gerar a tabela comb: %s\n",cudaGetErrorString(e)); exit(1); }
 }
 
 int main(int argc,char**argv){
@@ -430,7 +458,7 @@ int main(int argc,char**argv){
         kValidate<<<1,1>>>(d_out); cudaDeviceSynchronize();
         cudaError_t e=cudaGetLastError(); if(e){printf("ERRO CUDA: %s\n",cudaGetErrorString(e));return 1;}
         cudaMemcpy(h_out,d_out,73*sizeof(unsigned int),cudaMemcpyDeviceToHost);
-        printf("== Validacao COMB + lote na GPU (%s, BATCHM=%d) ==\n",prop.name,BATCHM);
+        printf("== Validacao COMB + lote na GPU (%s, WBITS=%d, NWIN=%d, BATCHM=%d) ==\n",prop.name,WBITS,NWIN,BATCHM);
         printf("  G.x = "); hx(h_out,8); printf("\n  esperado _GX = 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\n");
         printf("  G.y = "); hx(h_out+8,8); printf("\n");
         printf("  hash160(G) = ");
@@ -562,7 +590,7 @@ int main(int argc,char**argv){
     int blocks=120,threads=256,ppt=64;
     for(int i=1;i<argc-1;i++){ if(!strcmp(argv[i],"-b"))blocks=atoi(argv[++i]); else if(!strcmp(argv[i],"-t"))threads=atoi(argv[++i]); else if(!strcmp(argv[i],"-p"))ppt=atoi(argv[++i]); }
     int groups=ppt/BATCHM; if(groups<1) groups=1;
-    printf("GPU: %s (%d SMs)  [OTIMIZADO: comb de base fixa + inversao em lote, BATCHM=%d]\n",prop.name,prop.multiProcessorCount,BATCHM);
+    printf("GPU: %s (%d SMs)  [OTIMIZADO: comb WBITS=%d (NWIN=%d) + inversao em lote BATCHM=%d]\n",prop.name,prop.multiProcessorCount,WBITS,NWIN,BATCHM);
     printf("Config: %d x %d x %d grupos x %d = %.2f M derivacoes COMPLETAS\n",blocks,threads,groups,BATCHM,(double)blocks*threads*groups*BATCHM/1e6);
     unsigned long long *d_done,h_done=0; cudaMalloc(&d_done,sizeof(unsigned long long)); cudaMemset(d_done,0,sizeof(unsigned long long));
     uint64_t seed=(uint64_t)time(NULL)*0x100000001B3ULL^(uint64_t)clock();

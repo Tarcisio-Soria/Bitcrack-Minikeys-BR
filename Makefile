@@ -60,8 +60,11 @@ minikey_gpu: src/minikey_gpu.cu
 minikey_gpu_full: src/minikey_gpu_full.cu
 	$(NVCC) $(NVCCFLAGS) -I$(BC)/cudaMath -o $@ src/minikey_gpu_full.cu $(NVML)
 
+# WBITS = largura da janela do comb de base fixa (estudo de otimizacao).
+# 10 e o ponto otimo medido na RTX 3060 (tabela enxuta ~1,6MB, ganho ~= o de 16).
+WBITS?=10
 minikey_gpu_opt: src/minikey_gpu_opt.cu
-	$(NVCC) $(NVCCFLAGS) -DBATCHM=$(BATCHM) -I$(BC)/cudaMath -o $@ src/minikey_gpu_opt.cu $(NVML)
+	$(NVCC) $(NVCCFLAGS) -DBATCHM=$(BATCHM) -DWBITS=$(WBITS) -I$(BC)/cudaMath -o $@ src/minikey_gpu_opt.cu $(NVML)
 
 # BitcrackM: front-end CLI estilo BitCrack (busca contra lista de enderecos-alvo)
 bitcrackm: BitcrackM

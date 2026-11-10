@@ -42,17 +42,29 @@ O fluxo separa triagem (fase A) e derivação (fase B) por meio de um **buffer**
 
 ### Implementadas em `minikey_gpu_opt.cu`
 
-1. **Comb de base fixa.** Como `G` é sempre o mesmo ponto, pré-computamos uma tabela `T[i][j] = (j·2⁸ⁱ)·G` (32 janelas × 256 dígitos, 512 KB, gerada na própria GPU pela rotina ingênua já validada ⇒ **bit-exata por construção**). Cada `k·G` passa a custar **≤ 31 somas de ponto e ZERO duplicações** (contra 256 duplicações do método ingênuo).
+1. **Comb de base fixa (janela parametrizável `WBITS`).** Como `G` é sempre o mesmo ponto, pré-computamos uma tabela `T[i][j] = (j·2^{WBITS·i})·G` na própria GPU pela rotina ingênua já validada ⇒ **bit-exata por construção**. Cada `k·G` passa a custar **≤ NWIN−1 somas de ponto e ZERO duplicações** (contra 256 duplicações do método ingênuo). Com `WBITS=10` são 26 janelas (~25 somas); `WBITS=16` seriam 16 janelas (15 somas).
 2. **Inversão em lote (truque de Montgomery).** A conversão Jacobiano→afim exige uma inversão modular, que aqui é via Fermat (~385 multiplicações de campo por chave!). Processando `BATCHM` chaves por *thread*, fazemos **1 inversão + 3(M−1) multiplicações** no lugar de M inversões.
+3. **Aritmética de campo em PTX (herdada da cudaMath).** `mulModP`/`squareModP` já são cadeias `madc.lo/hi` desenroladas à mão, com a **redução dedicada do primo pseudo-Mersenne** de secp256k1 (`p = 2²⁵⁶ − 2³² − 977`) — o estado da arte para 256 bits em GPU.
+
+### Estudo de otimização (medido na RTX 3060, bit-exato em todos os pontos)
+
+| Variação testada | Resultado |
+|---|---|
+| Janela do comb `WBITS` 8 → 16 (metade das somas) | só **~+4%** |
+| Lote `BATCHM` 4 → 16 | **plano** (dentro do ruído) |
+| Registradores por *thread* (kDerive/kBench) | **91–102**, ~1,6 KB de spill → ocupância **~40%** |
+
+**Diagnóstico:** o TESTE é limitado por **pressão de registrador/ocupância e latência de memória**, não pelo número de somas de ponto. Por isso as otimizações algorítmicas acima batem num teto de hardware — o que **reforça a tese**: mesmo no limite da GPU, 2¹¹⁵ fica intacto.
 
 ### Deliberadamente **não** implementadas — e o porquê
 
 - **Incremental `P + G`** (o truque do BitCrack): exige chaves **consecutivas**. `SHA256` as embaralha ⇒ inaplicável.
 - **GLV (endomorfismo λ/β):** acelera base **variável**. Num comb de base **fixa**, ele apenas troca "1 comb de 256 bits" por "2 combs de 128 bits" = **mesmo número de somas** ⇒ sem ganho, só complexidade. (ver cabeçalho de `src/minikey_gpu_opt.cu`)
 - **wNAF:** subsumido pelo comb (não há duplicações a otimizar).
+- **Montgomery form** (nos campos): **mais lenta** aqui — o primo pseudo-Mersenne admite redução própria mais barata que a de Montgomery.
 - **Pollard Kangaroo / BSGS:** resolvem o log discreto num **intervalo conhecido**. As chaves de *minikey* estão espalhadas por **todo** o 2²⁵⁶ (não há intervalo pequeno), e exigiriam a chave **pública** do alvo — mas só temos o endereço, e `hash160` é de mão única.
 
-**Conclusão metodológica:** as otimizações atacam a **taxa**, nunca o **espaço** (2¹¹⁵).
+**Conclusão metodológica:** as otimizações atacam a **taxa**, nunca o **espaço** (2¹¹⁵) — e a taxa já esbarra no teto de ocupância da GPU.
 
 ---
 
