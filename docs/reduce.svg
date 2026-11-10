@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 384" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="14">
+  <rect x="0" y="0" width="820" height="384" rx="12" fill="#0d1117" stroke="#30363d"/>
+  <text x="20" y="34" fill="#6e7681">$ ./BitcrackM -list data/targets-ours.txt -s RESULTS.txt -reduce SVXbZMHek7Eetag8ssc7H8 6</text>
+  <text x="20" y="66" fill="#e6edf3"><tspan fill="#6e7681">[00:15]</tspan> 100.0%  <tspan fill="#6e7681">│</tspan> triagem <tspan fill="#3fb950">2.52 GH/s</tspan>  teste <tspan fill="#3fb950">9.86 M keys/s</tspan>  <tspan fill="#6e7681">│</tspan> testadas <tspan font-weight="bold">148,704,053</tspan>  <tspan fill="#6e7681">│</tspan> <tspan fill="#e3b341">68°C</tspan> <tspan font-weight="bold">1830 MHz</tspan></text>
+  <text x="20" y="104" fill="#3fb950" font-weight="bold">▸ ACHOU!</text>
+  <text x="20" y="130" fill="#e6edf3">   minikey : <tspan fill="#e3b341">SVXbZMHek7Eetag8ssc7H8</tspan></text>
+  <text x="20" y="156" fill="#e6edf3">   privkey : <tspan fill="#ff9f43">26e724ce884d6e9c5aa335a34d12198b16f7bba617733a754ddd72d5db78b41d</tspan></text>
+  <text x="20" y="182" fill="#e6edf3">   endereço: <tspan fill="#58a6ff">1DKiyNi8esrkyECmAqKMbbKEspHasWWn5c</tspan></text>
+  <text x="20" y="208" fill="#3fb950">   ✓ gravado em RESULTS.txt</text>
+  <text x="20" y="252" fill="#e6edf3" font-weight="bold">--- resumo ---</text>
+  <text x="20" y="282" fill="#e6edf3">  tempo:     <tspan font-weight="bold">15.08 s</tspan></text>
+  <text x="20" y="310" fill="#e6edf3">  triadas:   <tspan font-weight="bold">38,068,692,544</tspan> candidatos   <tspan fill="#6e7681">(</tspan><tspan fill="#3fb950">2.52 GH/s</tspan><tspan fill="#6e7681">)</tspan></text>
+  <text x="20" y="338" fill="#e6edf3">  testadas:  <tspan font-weight="bold">148,704,053</tspan> chaves (passaram 0x00, ~1/256)   <tspan fill="#6e7681">(</tspan><tspan fill="#3fb950">9.86 M keys/s</tspan><tspan fill="#6e7681">)</tspan></text>
+  <text x="20" y="366" fill="#6e7681">demonstração de corretude — a parede quantitativa (2¹¹⁵) vem do modo de busca completa</text>
+</svg>

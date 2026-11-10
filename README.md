@@ -6,6 +6,8 @@ Adaptação do [BitCrack](https://github.com/brichard19/BitCrack) (via [BitCrack
 
 > ⚠️ **Escopo ético.** Este projeto **não** busca as chaves das moedas Casascius ainda lacradas (propriedade de colecionadores). Toda a demonstração de corretude usa **chaves de teste geradas por nós** (`data/our-minikeys-s1.txt`, sem fundos). Veja [Ética](#ética).
 
+![Painel ao vivo do BitcrackM](docs/painel.svg)
+
 ---
 
 ## A tese
@@ -72,11 +74,13 @@ O fluxo separa triagem (fase A) e derivação (fase B) por meio de um **buffer**
 
 | Pipeline | Taxa (derivação completa) | Ganho |
 |----------|---------------------------|-------|
-| Ingênuo (`minikey_gpu_full`, double-and-add) | ~1,20 M keys/s | 1× |
-| **Otimizado** (`minikey_gpu_opt`, comb + lote) | **~11,3 M keys/s** (picos ~11,6) | **~9,4×** |
-| Triagem isolada (só SHA256 + filtro) | ~1,7 G cand/s | — |
+| Ingênuo (`minikey_gpu_full`, double-and-add) | ~1,2 M keys/s | 1× |
+| **Otimizado** (`minikey_gpu_opt`, comb + lote) | **~22–28 M keys/s** (varia com clock/térmico) | **~20×** |
+| Triagem isolada (só SHA256 + filtro) | ~1,7–2,7 GH/s | — |
 
-Validação **bit-exata**: o modo `validate` cruza o caminho otimizado com o ingênuo e com vetores conhecidos (`G`, `2G`, `hash160(G) = 91b24bf9…`, `SHA256`, `RIPEMD160`) — resultado `IDENTICO`.
+![Velocidade: ingênuo × otimizado](docs/velocidade.svg)
+
+Validação **bit-exata**: o modo `validate` cruza o caminho otimizado com o ingênuo e com vetores conhecidos (`G`, `2G`, `hash160(G) = 91b24bf9…`, `SHA256`, `RIPEMD160`), **incluindo um lote completo `cnt=BATCHM`** — resultado `IDENTICO`. (Essa checagem de lote pegou um bug de aliasing real na inversão em lote; ver histórico de commits.)
 
 ### Extrapolação para 2¹¹⁵
 
@@ -124,6 +128,8 @@ Programa principal: recebe uma lista de endereços-alvo e grava a chave quando u
 ```
 
 Exemplo de resumo do `-reduce` (K=6): `triadas: 38.068.692.544 (2,56 GH/s)` · `testadas: 148.704.053 (10,0 M keys/s)` em ~15 s — e a chave recuperada, provando que o buscador funciona ponta a ponta (a parede quantitativa vem do modo completo, 2¹¹⁵).
+
+![Demonstração -reduce: acha a chave e resume](docs/reduce.svg)
 
 Flags: `-list <arq>` (endereços-alvo Base58), `-s`/`-o <arq>` (salva `minikey  privkey  endereço`), `-b -t -p` (tuning), `-reduce <mk22> <K>` (demo que encontra), `--naive` (pipeline ingênuo p/ comparar). Saída de um achado:
 

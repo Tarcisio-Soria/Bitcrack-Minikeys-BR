@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 320" font-family="ui-sans-serif,Segoe UI,Helvetica,Arial,sans-serif">
+  <rect x="0" y="0" width="760" height="320" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="28" y="44" font-size="20" font-weight="600" fill="#1f2328">Derivação completa (keys/s) — RTX 3060 Laptop</text>
+  <text x="28" y="70" font-size="14" fill="#636c76">SHA256 + multiplicação escalar secp256k1 + hash160, por chave</text>
+
+  <!-- eixo -->
+  <line x1="235" y1="92" x2="235" y2="230" stroke="#d0d7de"/>
+
+  <!-- barra ingenuo -->
+  <text x="225" y="128" font-size="15" fill="#1f2328" text-anchor="end">Ingênuo</text>
+  <text x="225" y="146" font-size="12" fill="#636c76" text-anchor="end">double-and-add</text>
+  <rect x="235" y="112" width="21" height="34" rx="3" fill="#8b949e"/>
+  <text x="266" y="135" font-size="15" fill="#1f2328">1,2 M/s</text>
+
+  <!-- barra otimizado -->
+  <text x="225" y="196" font-size="15" fill="#1f2328" text-anchor="end">Otimizado</text>
+  <text x="225" y="214" font-size="12" fill="#636c76" text-anchor="end">comb + lote</text>
+  <rect x="235" y="180" width="429" height="34" rx="3" fill="#2ea043"/>
+  <text x="674" y="203" font-size="15" font-weight="600" fill="#1a7f37">≈ 24 M/s</text>
+
+  <!-- ganho -->
+  <text x="470" y="256" font-size="16" font-weight="600" fill="#1a7f37" text-anchor="middle">≈ 20× sobre o ingênuo</text>
+
+  <line x1="28" y1="276" x2="732" y2="276" stroke="#eaeef2"/>
+  <text x="28" y="300" font-size="13" fill="#636c76">triagem (SHA256 + filtro 0x00): <tspan fill="#1f2328" font-weight="600">1,7–2,7 GH/s</tspan>   ·   parede do espaço: <tspan fill="#1f2328" font-weight="600">2¹¹⁵ ⇒ ~10²⁰ anos</tspan> (inquebrável)</text>
+</svg>
