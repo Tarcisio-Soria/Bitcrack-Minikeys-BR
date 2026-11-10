@@ -3,6 +3,10 @@
 /minikey_gpu
 /minikey_gpu_full
 /minikey_gpu_opt
+/BitcrackM
+
+# saída de execução
+/RESULTS.txt
 
 # objetos / artefatos de build
 *.o

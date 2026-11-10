@@ -49,7 +49,7 @@ CPU_SRC=$(BC)/secp256k1lib/secp256k1.cpp \
         $(BC)/AddressUtil/Base58.cpp $(BC)/AddressUtil/hash.cpp \
         $(BC)/util/util.cpp $(BC)/Logger/Logger.cpp
 
-all: minikey minikey_gpu minikey_gpu_full minikey_gpu_opt
+all: minikey minikey_gpu minikey_gpu_full minikey_gpu_opt BitcrackM
 
 minikey: src/minikey.cpp $(CPU_SRC)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ $^
@@ -63,7 +63,12 @@ minikey_gpu_full: src/minikey_gpu_full.cu
 minikey_gpu_opt: src/minikey_gpu_opt.cu
 	$(NVCC) $(NVCCFLAGS) -DBATCHM=$(BATCHM) -I$(BC)/cudaMath -o $@ src/minikey_gpu_opt.cu $(NVML)
 
+# BitcrackM: front-end CLI estilo BitCrack (busca contra lista de enderecos-alvo)
+bitcrackm: BitcrackM
+BitcrackM: src/BitcrackM.cu
+	$(NVCC) $(NVCCFLAGS) -DBATCHM=$(BATCHM) -I$(BC)/cudaMath -o $@ src/BitcrackM.cu $(NVML)
+
 clean:
-	rm -f minikey minikey_gpu minikey_gpu_full minikey_gpu_opt
+	rm -f minikey minikey_gpu minikey_gpu_full minikey_gpu_opt BitcrackM
 
 .PHONY: all clean

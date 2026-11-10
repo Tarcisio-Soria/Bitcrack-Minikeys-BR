@@ -94,6 +94,31 @@ Outras variáveis: `CUDA_HOME` (default `/usr/local/cuda-12.9`), `CCBIN` (defaul
 
 ## Uso
 
+### `BitcrackM` — front-end CLI (estilo BitCrack)
+
+Programa principal: recebe uma lista de endereços-alvo e grava a chave quando um endereço derivado bate com a lista.
+
+```bash
+# Busca COMPLETA no espaço 2^115 (prova a inviabilidade; não encontra nada).
+# Painel ao vivo; Ctrl+C para parar.
+./BitcrackM -list data/targets-ours.txt -s RESULTS.txt
+
+# DEMONSTRAÇÃO de corretude (-reduce): fixa 18 chars de uma minikey NOSSA conhecida,
+# brute-força os 4 últimos → espaço pequeno → ACHA e grava em RESULTS.txt.
+./BitcrackM -list data/targets-ours.txt -s RESULTS.txt -reduce SVXbZMHek7Eetag8ssc7H8 4
+```
+
+Flags: `-list <arq>` (endereços-alvo Base58), `-s`/`-o <arq>` (salva `minikey  privkey  endereço`), `-b -t -p` (tuning), `-reduce <mk22> <K>` (demo que encontra), `--naive` (pipeline ingênuo p/ comparar). Saída de um achado:
+
+```
+>> ACHOU!
+   minikey : SVXbZMHek7Eetag8ssc7H8
+   privkey : 26e724ce884d6e9c5aa335a34d12198b16f7bba617733a754ddd72d5db78b41d
+   endereco: 1DKiyNi8esrkyECmAqKMbbKEspHasWWn5c
+```
+
+### Ferramentas de medição (usadas no TCC)
+
 ```bash
 # Referência CPU (corretude; vetores conhecidos da Casascius)
 ./minikey selftest
@@ -125,6 +150,7 @@ Rode os modos que leem dados (`run`) a partir da **raiz do projeto** (eles abrem
 ```
 Bitcrack-Minikeys-BR/
 ├── src/            # código do PoC (nosso)
+│   ├── BitcrackM.cu          front-end CLI (busca contra lista de endereços-alvo)
 │   ├── minikey.cpp           referência CPU
 │   ├── minikey_gpu.cu        triagem GPU
 │   ├── minikey_gpu_full.cu   pipeline completo ingênuo
