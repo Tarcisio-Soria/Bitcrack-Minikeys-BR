@@ -69,7 +69,7 @@ minikey_gpu_opt: src/minikey_gpu_opt.cu
 # BitcrackM: front-end CLI estilo BitCrack (busca contra lista de enderecos-alvo)
 bitcrackm: BitcrackM
 BitcrackM: src/BitcrackM.cu
-	$(NVCC) $(NVCCFLAGS) -DBATCHM=$(BATCHM) -I$(BC)/cudaMath -o $@ src/BitcrackM.cu $(NVML)
+	$(NVCC) $(NVCCFLAGS) -DBATCHM=$(BATCHM) -DWBITS=$(WBITS) -I$(BC)/cudaMath -o $@ src/BitcrackM.cu $(NVML)
 
 clean:
 	rm -f minikey minikey_gpu minikey_gpu_full minikey_gpu_opt BitcrackM

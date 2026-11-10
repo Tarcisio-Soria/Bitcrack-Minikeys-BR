@@ -184,19 +184,40 @@ __device__ void scalarMulG_naive(const unsigned int k[8], unsigned int outX[8], 
     mulModP(X,Zi2,outX); mulModP(Y,Zi3,outY);
 }
 
-// comb de base fixa
-#define NWIN 32
-__device__ unsigned int d_comb[NWIN*256*16];
+// comb de base fixa parametrizado por WBITS (largura da janela). Tabela dinamica
+// g_comb[(i*NDIG+j)*16], gerada na GPU pela rotina ingenua (bit-exata). Default
+// WBITS=10 = ponto otimo medido na RTX 3060 (ver estudo no minikey_gpu_opt).
+#ifndef WBITS
+#define WBITS 10
+#endif
+#define NWIN  ((256 + WBITS - 1) / WBITS)
+#define NDIG  (1u << WBITS)
+#define WMASK (NDIG - 1u)
+__device__ unsigned int *g_comb;
+__device__ __forceinline__ unsigned int combDigit(const unsigned int k[8], int p){
+    int lw=p>>5, bit=p&31;
+    unsigned long long lo=k[7-lw];
+    unsigned long long hi=(lw+1<8)?(unsigned long long)k[7-lw-1]:0ull;
+    return (unsigned int)(((lo|(hi<<32))>>bit)&WMASK);
+}
 __global__ void kBuildComb(){
-    int i=blockIdx.x, j=threadIdx.x; unsigned int *T=d_comb+((i*256+j)*16);
+    int i=blockIdx.x; unsigned int j=blockIdx.y*blockDim.x+threadIdx.x;
+    if(j>=NDIG) return;
+    unsigned int *T=g_comb+(((size_t)i*NDIG+j)*16);
     if(j==0){ for(int t=0;t<16;t++) T[t]=0; return; }
-    unsigned int k[8]; for(int t=0;t<8;t++) k[t]=0; int wi=7-(i>>2), sh=8*(i&3); k[wi]=((unsigned int)j)<<sh;
+    int base=WBITS*i, lw=base>>5, bit=base&31;
+    unsigned long long val=((unsigned long long)j)<<bit;
+    unsigned int w0=(unsigned int)val, w1=(unsigned int)(val>>32);
+    unsigned int k[8]; for(int t=0;t<8;t++) k[t]=0; bool ovf=false;
+    if(lw<8) k[7-lw]=w0; else if(w0) ovf=true;
+    if(w1){ if(lw+1<8) k[7-lw-1]=w1; else ovf=true; }
+    if(ovf){ for(int t=0;t<16;t++) T[t]=0; return; }
     unsigned int x[8],y[8]; scalarMulG_naive(k,x,y); for(int t=0;t<8;t++){ T[t]=x[t]; T[8+t]=y[t]; }
 }
 __device__ void combJac(const unsigned int k[8], unsigned int X[8],unsigned int Y[8],unsigned int Z[8]){
     for(int i=0;i<8;i++){X[i]=0;Y[i]=0;Z[i]=0;} unsigned int nX[8],nY[8],nZ[8];
-    for(int i=0;i<NWIN;i++){ unsigned int digit=(k[7-(i>>2)]>>(8*(i&3)))&0xFF;
-        if(digit){ const unsigned int *T=d_comb+((i*256+digit)*16);
+    for(int i=0;i<NWIN;i++){ unsigned int digit=combDigit(k,WBITS*i);
+        if(digit){ const unsigned int *T=g_comb+(((size_t)i*NDIG+digit)*16);
             jacAddAffine(X,Y,Z,T,T+8,nX,nY,nZ); setField(X,nX);setField(Y,nY);setField(Z,nZ); } }
 }
 __device__ void scalarMulG_comb(const unsigned int k[8], unsigned int outX[8], unsigned int outY[8]){
@@ -367,9 +388,13 @@ int main(int argc,char**argv){
 
     cudaDeviceProp prop; cudaGetDeviceProperties(&prop,0);
     printf("=== BitcrackM · Bitcrack-Minikeys-BR ===\n");
-    printf("GPU: %s   alvos carregados: %d   pipeline: %s%s\n",prop.name,ntgt,
-           naive?"INGENUO (double-and-add)":"OTIMIZADO (comb + lote)", savePath?"":"   (sem -s: nao grava)");
-    kBuildComb<<<NWIN,256>>>(); cudaDeviceSynchronize();
+    printf("GPU: %s   alvos carregados: %d   pipeline: %s (WBITS=%d)%s\n",prop.name,ntgt,
+           naive?"INGENUO (double-and-add)":"OTIMIZADO (comb + lote)", WBITS, savePath?"":"   (sem -s: nao grava)");
+    { size_t bytes=(size_t)NWIN*NDIG*16*sizeof(unsigned int);
+      unsigned int *d_ptr; cudaError_t ce=cudaMalloc(&d_ptr,bytes);
+      if(ce){ printf("ERRO cudaMalloc tabela comb (%zu MB): %s\n",bytes>>20,cudaGetErrorString(ce)); return 1; }
+      cudaMemcpyToSymbol(g_comb,&d_ptr,sizeof(d_ptr));
+      dim3 grid(NWIN,(NDIG+255)/256); kBuildComb<<<grid,256>>>(); cudaDeviceSynchronize(); }
     cudaError_t e=cudaGetLastError(); if(e){ printf("ERRO build comb: %s\n",cudaGetErrorString(e)); return 1; }
 
     unsigned int *d_tg; cudaMalloc(&d_tg,flat.size()*sizeof(unsigned int));
