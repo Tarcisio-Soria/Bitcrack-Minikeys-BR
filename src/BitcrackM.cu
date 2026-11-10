@@ -233,7 +233,8 @@ __device__ void deriveBatchHash(const unsigned int priv[BATCHM][8], int cnt, uns
     unsigned int acc[8]; invModP(pre[cnt-1],acc);
     for(int m=cnt-1;m>=1;m--){ unsigned int zi[8],zi2[8],zi3[8],x[8],y[8];
         mulModP(acc,pre[m-1],zi); squareModP(zi,zi2); mulModP(zi2,zi,zi3);
-        mulModP(X[m],zi2,x); mulModP(Y[m],zi3,y); hash160(x,y,outh[m]); mulModP(acc,Z[m],acc); }
+        mulModP(X[m],zi2,x); mulModP(Y[m],zi3,y); hash160(x,y,outh[m]);
+        unsigned int tacc[8]; mulModP(acc,Z[m],tacc); setField(acc,tacc); }   // sem aliasar saida=entrada
     { unsigned int zi2[8],zi3[8],x[8],y[8]; squareModP(acc,zi2); mulModP(zi2,acc,zi3);
       mulModP(X[0],zi2,x); mulModP(Y[0],zi3,y); hash160(x,y,outh[0]); }
 }
@@ -296,21 +297,25 @@ __global__ void kDeriveListNaive(const unsigned char *buf, unsigned int n, const
 }
 // modo -reduce: fixa (21-K) chars conhecidos, bruteforca os K ultimos, compara c/ alvos
 __device__ __constant__ unsigned char cKnownIdx[21];
-__global__ void kReduceList(int K, unsigned long long total, const unsigned int *tg, int ntgt, Hit *hit){
+// Varre TODO o espaco 58^K (sem early-exit, p/ tempo deterministico e resumo honesto);
+// conta quantas passaram no filtro 0x00 (= chaves efetivamente TESTADAS na curva).
+// -reduce em DUAS FASES (como a busca completa): FASE A triagem do bloco
+// [startC, startC+count) com odometro base58 -> empurra as validas pro buffer;
+// a derivacao densa fica com kDeriveList (lote). Evita a divergencia de warp.
+__global__ void kReduceTriage(int K, unsigned long long startC, unsigned long long count,
+                              unsigned char *buf, unsigned int *cnt, unsigned int cap){
+    unsigned long long nth=(unsigned long long)gridDim.x*blockDim.x;
     unsigned long long tid=(unsigned long long)blockIdx.x*blockDim.x+threadIdx.x;
-    unsigned long long stride=(unsigned long long)gridDim.x*blockDim.x;
-    unsigned char idx[21];
-    for(unsigned long long c=tid;c<total;c+=stride){ if(hit->flag) return;
-        for(int i=0;i<21;i++) idx[i]=cKnownIdx[i];
-        unsigned long long t=c; for(int j=0;j<K;j++){ idx[21-K+j]=(unsigned char)(t%58); t/=58; }
+    unsigned long long per=(count+nth-1)/nth, s=tid*per, e=s+per; if(e>count) e=count;
+    if(s>=e) return;
+    unsigned char idx[21]; for(int i=0;i<21;i++) idx[i]=cKnownIdx[i];
+    unsigned long long t=startC+s; for(int j=0;j<K;j++){ idx[21-K+j]=(unsigned char)(t%58); t/=58; }
+    for(unsigned long long c=s;c<e;c++){
         unsigned char mkq[23]; mkq[0]='S'; for(int i=0;i<21;i++) mkq[i+1]=dB58[idx[i]]; mkq[22]='?';
-        unsigned int h[8]; sha256(mkq,23,h); if((h[0]>>24)!=0) continue;
-        unsigned char mk[22]; for(int i=0;i<22;i++) mk[i]=mkq[i];
-        unsigned int priv[8]; sha256(mk,22,priv);
-        unsigned int x[8],y[8],oh[5]; scalarMulG_comb(priv,x,y); hash160(x,y,oh);
-        int tt=targetFind(oh,tg,ntgt);
-        if(tt>=0 && atomicCAS(&hit->flag,0,1)==0){ for(int i=0;i<21;i++) hit->idx[i]=idx[i];
-            for(int i=0;i<8;i++) hit->priv[i]=priv[i]; hit->tgt=tt; }
+        unsigned int h[8]; sha256(mkq,23,h);
+        if((h[0]>>24)==0){ unsigned int pos=atomicAdd(cnt,1u);
+            if(pos<cap){ unsigned char *d=buf+(size_t)pos*21; for(int i=0;i<21;i++) d[i]=idx[i]; } }
+        int p=21-K; while(p<21){ if(++idx[p]>=58){ idx[p]=0; p++; } else break; }  // odometro +1
     }
 }
 
@@ -427,15 +432,45 @@ int main(int argc,char**argv){
         unsigned char hIdx[21]; for(int i=0;i<21;i++){ int v=b58idx(reduceMk[1+i]); if(v<0){printf("char invalido na minikey\n");return 1;} hIdx[i]=(unsigned char)v; }
         cudaMemcpyToSymbol(cKnownIdx,hIdx,21);
         unsigned long long total=1; for(int i=0;i<reduceK;i++) total*=58; double bits=reduceK*5.8579;
-        printf("modo -reduce: fixando %d chars de %s, buscando os %d ultimos (58^%d = %llu, ~%.1f bits)\n",
-               22-reduceK,reduceMk,reduceK,reduceK,total,bits);
-        cudaEvent_t t0,t1; cudaEventCreate(&t0); cudaEventCreate(&t1); cudaEventRecord(t0);
-        kReduceList<<<blk,thr>>>(reduceK,total,d_tg,ntgt,d_hit); cudaEventRecord(t1); cudaEventSynchronize(t1);
-        e=cudaGetLastError(); if(e){ printf("ERRO CUDA: %s\n",cudaGetErrorString(e)); return 1; }
-        float ms=0; cudaEventElapsedTime(&ms,t0,t1);
+        printf("modo -reduce (duas fases, varredura completa): fixando %d chars de %s, buscando os %d ultimos\n",22-reduceK,reduceMk,reduceK);
+        printf("espaco: 58^%d = %s candidatos (~%.1f bits)\n",reduceK,thou(total).c_str(),bits);
+        signal(SIGINT,onint); nvInit();
+        const unsigned int CAP=2000000; const unsigned long long CHUNK=300000000ULL;  // ~1,17M validas/chunk < CAP
+        unsigned char *d_buf; unsigned int *d_cnt; cudaMalloc(&d_buf,(size_t)CAP*21); cudaMalloc(&d_cnt,4);
+        unsigned long long swept=0, tested=0; double cRate=0,tRate=0;
+        struct timespec ts0; clock_gettime(CLOCK_MONOTONIC,&ts0);
+        while(swept<total && !g_stop){
+            unsigned long long cnt=(total-swept<CHUNK)?(total-swept):CHUNK;
+            cudaMemset(d_cnt,0,4);
+            cudaEvent_t a0,a1; cudaEventCreate(&a0); cudaEventCreate(&a1);
+            cudaEventRecord(a0); kReduceTriage<<<blk,thr>>>(reduceK,swept,cnt,d_buf,d_cnt,CAP); cudaEventRecord(a1); cudaEventSynchronize(a1);
+            float msA=0; cudaEventElapsedTime(&msA,a0,a1); cudaEventDestroy(a0); cudaEventDestroy(a1);
+            unsigned int nval=0; cudaMemcpy(&nval,d_cnt,4,cudaMemcpyDeviceToHost); if(nval>CAP) nval=CAP;
+            cudaEvent_t b0,b1; cudaEventCreate(&b0); cudaEventCreate(&b1);
+            cudaEventRecord(b0); kDeriveList<<<blk,thr>>>(d_buf,nval,d_tg,ntgt,d_hit); cudaEventRecord(b1); cudaEventSynchronize(b1);
+            float msB=0; cudaEventElapsedTime(&msB,b0,b1); cudaEventDestroy(b0); cudaEventDestroy(b1);
+            swept+=cnt; tested+=nval; (void)msA; (void)msB;
+            cudaMemcpy(&h_hit,d_hit,sizeof(Hit),cudaMemcpyDeviceToHost);
+            struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+            double elapsed=(ts.tv_sec-ts0.tv_sec)+(ts.tv_nsec-ts0.tv_nsec)/1e9; long el=(long)elapsed;
+            cRate=elapsed>0?swept/elapsed:0; tRate=elapsed>0?tested/elapsed:0;   // taxas cumulativas (estaveis)
+            double pct=100.0*swept/total; unsigned int temp=0,clk=0; nvRead(temp,clk);
+            if(g_plain) printf("[%02ld:%02ld] %.1f%%  triadas=%s  testadas=%s  triagem=%sH/s  teste=%s keys/s\n",
+                               el/60,el%60,pct,thou(swept).c_str(),thou(tested).c_str(),rateStr(cRate).c_str(),rateStr(tRate).c_str());
+            else { printf("\r\033[K%s[%02ld:%02ld]%s %5.1f%%  %s│%s triagem %s%sH/s%s  teste %s%s keys/s%s  %s│%s testadas %s%s%s",
+                          CD,el/60,el%60,CR,pct,CD,CR,Cg,rateStr(cRate).c_str(),CR,Cg,rateStr(tRate).c_str(),CR,CD,CR,CB,thou(tested).c_str(),CR);
+                   if(g_nv) printf("  %s│%s %s%u°C%s %s%u MHz%s",CD,CR,tcol(temp),temp,CR,CB,clk,CR);
+                   fflush(stdout); }
+        }
         cudaMemcpy(&h_hit,d_hit,sizeof(Hit),cudaMemcpyDeviceToHost);
-        printf("tempo: %.3f s\n",ms/1000.0); report(h_hit.flag!=0);
-        cudaFree(d_tg); cudaFree(d_hit); return 0;
+        struct timespec tsf; clock_gettime(CLOCK_MONOTONIC,&tsf);
+        double sec=(tsf.tv_sec-ts0.tv_sec)+(tsf.tv_nsec-ts0.tv_nsec)/1e9;
+        report(h_hit.flag!=0);
+        printf("\n%s--- resumo ---%s\n",CB,CR);
+        printf("  tempo:     %s%.2f s%s%s\n",CB,sec,CR,g_stop?"  (interrompido)":"");
+        printf("  triadas:   %s%s%s candidatos   (%s%sH/s%s)\n",CB,thou(swept).c_str(),CR,Cg,rateStr(sec>0?swept/sec:0).c_str(),CR);
+        printf("  testadas:  %s%s%s chaves (passaram 0x00, ~1/256)   (%s%s keys/s%s)\n",CB,thou(tested).c_str(),CR,Cg,rateStr(sec>0?tested/sec:0).c_str(),CR);
+        cudaFree(d_buf); cudaFree(d_cnt); cudaFree(d_tg); cudaFree(d_hit); return 0;
     }
 
     // busca completa (prova 2^115)

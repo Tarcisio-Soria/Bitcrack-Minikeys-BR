@@ -290,7 +290,7 @@ __device__ void deriveBatchHash(const unsigned int priv[BATCHM][8], int cnt, uns
         squareModP(zi,zi2); mulModP(zi2,zi,zi3);
         mulModP(X[m],zi2,x); mulModP(Y[m],zi3,y);
         hash160(x,y,outh[m]);
-        mulModP(acc,Z[m],acc);                            // acc = 1/(Z0..Z_{m-1})
+        unsigned int tacc[8]; mulModP(acc,Z[m],tacc); setField(acc,tacc);  // acc=1/(Z0..Z_{m-1}) (sem aliasar saida=entrada)
     }
     { unsigned int zi2[8],zi3[8],x[8],y[8];               // m=0: zi = acc
       squareModP(acc,zi2); mulModP(zi2,acc,zi3);
@@ -322,8 +322,15 @@ __global__ void kValidate(unsigned int *g_out){
     for(int i=0;i<5;i++) g_out[63+i]=nh[i];                          // hash160 via NAIVE
     unsigned int priv[BATCHM][8]; unsigned int oh[BATCHM][5];
     for(int i=0;i<8;i++) priv[0][i]=kk[i];
-    deriveBatchHash(priv,1,oh);                                     // hash160 via COMB+LOTE
+    deriveBatchHash(priv,1,oh);                                     // hash160 via COMB+LOTE (cnt=1)
     for(int i=0;i<5;i++) g_out[68+i]=oh[0][i];
+    // LOTE CHEIO: cnt=BATCHM chaves distintas, cada uma comparada ao NAIVE (pega bug de aliasing)
+    unsigned int pv[BATCHM][8], ob[BATCHM][5]; int ok=1;
+    for(int m=0;m<BATCHM;m++){ unsigned char s4[4]={'t','c','c',(unsigned char)('0'+m)}; sha256(s4,4,pv[m]); }
+    deriveBatchHash(pv,BATCHM,ob);
+    for(int m=0;m<BATCHM;m++){ unsigned int ax[8],ay[8],ah[5]; scalarMulG_naive(pv[m],ax,ay); hash160(ax,ay,ah);
+        for(int i=0;i<5;i++) if(ob[m][i]!=ah[i]) ok=0; }
+    g_out[73]=(unsigned int)ok;                                     // 1 = lote(cnt=BATCHM) bate c/ ingenuo p/ TODAS
 }
 
 // ------------------------------- Benchmark -----------------------------------
@@ -454,10 +461,10 @@ int main(int argc,char**argv){
 
     if(!strcmp(mode,"validate")){
         buildCombHost();
-        unsigned int *d_out,h_out[73]; cudaMalloc(&d_out,73*sizeof(unsigned int));
+        unsigned int *d_out,h_out[80]; cudaMalloc(&d_out,80*sizeof(unsigned int));
         kValidate<<<1,1>>>(d_out); cudaDeviceSynchronize();
         cudaError_t e=cudaGetLastError(); if(e){printf("ERRO CUDA: %s\n",cudaGetErrorString(e));return 1;}
-        cudaMemcpy(h_out,d_out,73*sizeof(unsigned int),cudaMemcpyDeviceToHost);
+        cudaMemcpy(h_out,d_out,80*sizeof(unsigned int),cudaMemcpyDeviceToHost);
         printf("== Validacao COMB + lote na GPU (%s, WBITS=%d, NWIN=%d, BATCHM=%d) ==\n",prop.name,WBITS,NWIN,BATCHM);
         printf("  G.x = "); hx(h_out,8); printf("\n  esperado _GX = 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\n");
         printf("  G.y = "); hx(h_out+8,8); printf("\n");
@@ -477,7 +484,9 @@ int main(int argc,char**argv){
         printf("\n                            hash160 COMB+ = ");
         for(int i=0;i<5;i++){unsigned int w=h_out[68+i];printf("%02x%02x%02x%02x",w&0xff,(w>>8)&0xff,(w>>16)&0xff,(w>>24)&0xff);}
         printf("\n  >> %s%s%s (otimizado %s ingenuo)\n", same?Cg:Cr, same?"IDENTICO":"DIFERENTE!", CR, same?"==":"!=");
-        cudaFree(d_out); return same?0:2;
+        bool batchOk=(h_out[73]!=0);
+        printf("  LOTE cnt=%d (todas as chaves vs ingenuo): %s%s%s\n", BATCHM, batchOk?Cg:Cr, batchOk?"IDENTICO":"DIFERENTE!", CR);
+        cudaFree(d_out); return (same&&batchOk)?0:2;
     }
 
     if(!strcmp(mode,"search")){

@@ -115,10 +115,15 @@ Programa principal: recebe uma lista de endereços-alvo e grava a chave quando u
 # Painel ao vivo; Ctrl+C para parar.
 ./BitcrackM -list data/targets-ours.txt -s RESULTS.txt
 
-# DEMONSTRAÇÃO de corretude (-reduce): fixa 18 chars de uma minikey NOSSA conhecida,
-# brute-força os 4 últimos → espaço pequeno → ACHA e grava em RESULTS.txt.
-./BitcrackM -list data/targets-ours.txt -s RESULTS.txt -reduce SVXbZMHek7Eetag8ssc7H8 4
+# DEMONSTRAÇÃO de corretude (-reduce): fixa (21−K) chars de uma minikey NOSSA e
+# brute-força os K últimos → espaço pequeno → ACHA e grava em RESULTS.txt.
+# Varredura completa em duas fases (triagem→buffer→derivação em lote), com
+# status ao vivo e resumo final (tempo, candidatos triados, chaves testadas, taxas).
+# K=6 ≈ 15 s na RTX 3060 (≈ 38 bilhões de candidatos triados):
+./BitcrackM -list data/targets-ours.txt -s RESULTS.txt -reduce SVXbZMHek7Eetag8ssc7H8 6
 ```
+
+Exemplo de resumo do `-reduce` (K=6): `triadas: 38.068.692.544 (2,56 GH/s)` · `testadas: 148.704.053 (10,0 M keys/s)` em ~15 s — e a chave recuperada, provando que o buscador funciona ponta a ponta (a parede quantitativa vem do modo completo, 2¹¹⁵).
 
 Flags: `-list <arq>` (endereços-alvo Base58), `-s`/`-o <arq>` (salva `minikey  privkey  endereço`), `-b -t -p` (tuning), `-reduce <mk22> <K>` (demo que encontra), `--naive` (pipeline ingênuo p/ comparar). Saída de um achado:
 
