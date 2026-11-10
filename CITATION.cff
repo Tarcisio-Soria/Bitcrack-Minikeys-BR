@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: "Bitcrack-Minikeys-BR: prova de conceito da inviabilidade de força bruta em minikeys Casascius Série 1"
+message: "Se este software for útil em trabalho acadêmico, por favor cite-o."
+type: software
+authors:
+  - given-names: Tarcisio
+    family-names: Soria
+    alias: KKND
+abstract: >-
+  Adaptação do BitCrack para o esquema de minikey da Casascius Série 1, usada como
+  material de Trabalho de Conclusão de Curso em Ciência da Computação. Mede, em GPU
+  (NVIDIA RTX 3060), o custo da derivação completa (SHA256 + multiplicação escalar
+  secp256k1 + hash160) e demonstra que, mesmo com otimizações (comb de base fixa e
+  inversão modular em lote de Montgomery), o espaço de ~2^115 minikeys válidas torna
+  a busca inviável. Discute por que o truque incremental P+G, o endomorfismo GLV e o
+  algoritmo Pollard Kangaroo não se aplicam a chaves derivadas por SHA256.
+keywords:
+  - Casascius
+  - minikey
+  - secp256k1
+  - CUDA
+  - força bruta
+  - criptografia de curva elíptica
+  - BitCrack
+license: MIT
+repository-code: "https://github.com/Tarcisio-Soria/Bitcrack-Minikeys-BR"
+year: 2026

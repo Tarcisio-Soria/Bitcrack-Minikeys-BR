@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 512" font-family="'DejaVu Sans Mono','Cascadia Code','Consolas',monospace" font-size="13.5">
+  <style>
+    .t  { fill:#c9d1d9; }           /* texto padrao */
+    .b  { fill:#ffffff; font-weight:bold; }
+    .d  { fill:#6e7681; }           /* dim / reguas finas */
+    .c  { fill:#39c5cf; }           /* ciano reguas titulo */
+    .bl { fill:#58a6ff; }           /* rotulos azuis */
+    .g  { fill:#3fb950; }           /* verde ok / barra / speed */
+    .y  { fill:#e3b341; }           /* amarelo engrenagem */
+    .o  { fill:#f0883e; }           /* laranja temp alta */
+    .r  { fill:#f85149; }
+    text { white-space:pre; }
+  </style>
+
+  <rect x="0" y="0" width="740" height="512" rx="10" fill="#0b0e14"/>
+  <rect x="0" y="0" width="740" height="34" rx="10" fill="#161b22"/>
+  <rect x="0" y="24" width="740" height="10" fill="#161b22"/>
+  <circle cx="22" cy="17" r="6" fill="#ff5f56"/>
+  <circle cx="42" cy="17" r="6" fill="#ffbd2e"/>
+  <circle cx="62" cy="17" r="6" fill="#27c93f"/>
+  <text x="370" y="22" text-anchor="middle" class="d" font-size="12">cuBitCrack — RTX 3060 Laptop</text>
+
+  <!-- PREPARO -->
+  <text x="16" y="60"><tspan class="c">══════════════</tspan><tspan class="b"> BITCRACK BR · PREPARANDO BUSCA </tspan><tspan class="c">══════════════</tspan></text>
+  <text x="16" y="80"><tspan class="t">  </tspan><tspan class="b">NVIDIA GeForce RTX 3060 Laptop GPU</tspan><tspan class="d">  │  </tspan><tspan class="g">59°C</tspan><tspan class="t"> </tspan><tspan class="b">1702 MHz</tspan><tspan class="d">  │  compress.: </tspan><tspan class="t">comprimida</tspan></text>
+  <text x="16" y="100"><tspan class="d">  Config:  </tspan><tspan class="b">240</tspan><tspan class="d"> blocos × </tspan><tspan class="b">256</tspan><tspan class="d"> threads × </tspan><tspan class="b">256</tspan><tspan class="d"> pontos  =  </tspan><tspan class="b">15,728,640</tspan><tspan class="d"> chaves em paralelo</tspan></text>
+  <text x="16" y="120" class="d">  ────────────────────────────────────────</text>
+  <text x="16" y="140"><tspan class="bl">  Início: </tspan><tspan class="t">0000000000000000000000000000000000000000000000000000020000000000</tspan></text>
+  <text x="16" y="160"><tspan class="bl">  Fim:    </tspan><tspan class="t">000000000000000000000000000000000000000000000000000002FFFFFFFFFF</tspan></text>
+  <text x="16" y="180"><tspan class="bl">  Passo:  </tspan><tspan class="b">1</tspan><tspan class="d">  (sequencial)   ·   intervalo: </tspan><tspan class="b">40</tspan><tspan class="d"> bits</tspan></text>
+  <text x="16" y="200" class="d">  ────────────────────────────────────────</text>
+  <text x="16" y="220"><tspan class="y">  ⚙</tspan><tspan class="t"> Gerando pontos iniciais na GPU   </tspan><tspan class="d">·</tspan><tspan class="t">   15,728,640 pontos (600.0 MB)</tspan></text>
+  <text x="16" y="240"><tspan class="t">  [</tspan><tspan class="g">████████████████████████████████████████</tspan><tspan class="t">] </tspan><tspan class="b">100%</tspan></text>
+
+  <!-- BUSCA -->
+  <text x="16" y="282"><tspan class="c">══════════════</tspan><tspan class="b"> BUSCA EM ANDAMENTO </tspan><tspan class="c">══════════════</tspan></text>
+  <text x="16" y="302"><tspan class="t">  </tspan><tspan class="b">NVIDIA GeForce RTX 3060 Laptop GPU</tspan><tspan class="d">  │  VRAM </tspan><tspan class="t">2467/6143 MB</tspan><tspan class="d">  │  </tspan><tspan class="o">84°C</tspan><tspan class="t"> </tspan><tspan class="b">1515 MHz</tspan></text>
+  <text x="16" y="322" class="d">  ────────────────────────────────────────</text>
+  <text x="16" y="342"><tspan class="bl">  Alvos: </tspan><tspan class="b">1</tspan><tspan class="d"> endereço(s)   ·   </tspan><tspan class="g">654.27 MKey/s</tspan><tspan class="d">   ·   varridas: </tspan><tspan class="t">21,595,422,720</tspan></text>
+  <text x="16" y="362"><tspan class="d">  Progresso: [</tspan><tspan class="d">········································</tspan><tspan class="d">] </tspan><tspan class="b">1.96%</tspan><tspan class="d">   ETA </tspan><tspan class="t">00:27:27</tspan></text>
+  <text x="16" y="382" class="d">  ────────────────────────────────────────</text>
+  <text x="16" y="402" class="t">  Chave atual:</text>
+  <text x="16" y="422"><tspan class="t">  </tspan><tspan class="g">0000000000000000000000000000000000000000000000000000020507300000</tspan></text>
+  <text x="16" y="442"><tspan class="d">  Posição no total (0 → 2²⁵⁶):  </tspan><tspan class="b">1,918e-63 %</tspan></text>
+  <text x="16" y="462" class="d">  ────────────────────────────────────────</text>
+  <text x="16" y="482"><tspan class="d">  decorrido </tspan><tspan class="t">00:00:30</tspan><tspan class="d">   ·   Ctrl+C para parar</tspan></text>
+</svg>

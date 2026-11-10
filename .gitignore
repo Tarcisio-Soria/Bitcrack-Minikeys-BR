@@ -1,0 +1,18 @@
+# binários compilados
+/minikey
+/minikey_gpu
+/minikey_gpu_full
+/minikey_gpu_opt
+
+# objetos / artefatos de build
+*.o
+*.obj
+*.a
+*.exe
+
+# editores / SO
+*.swp
+*~
+.DS_Store
+.vscode/
+.idea/
