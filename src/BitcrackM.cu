@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <csignal>
 #include <ctime>
+#include <unistd.h>
 #include <cuda_runtime.h>
 #include <nvml.h>
 #include "secp256k1.cuh"
@@ -314,13 +315,21 @@ static bool addr2hash160(const std::string &s, unsigned int out[5]){
 static volatile sig_atomic_t g_stop=0; static void onint(int){ g_stop=1; }
 static nvmlDevice_t g_nd; static bool g_nv=false;
 static void nvInit(){ if(nvmlInit()==NVML_SUCCESS && nvmlDeviceGetHandleByIndex(0,&g_nd)==NVML_SUCCESS) g_nv=true; }
+static void nvRead(unsigned int&t,unsigned int&c){ t=0;c=0; if(g_nv){ nvmlDeviceGetTemperature(g_nd,NVML_TEMPERATURE_GPU,&t); nvmlDeviceGetClockInfo(g_nd,NVML_CLOCK_SM,&c);} }
+// cores ANSI (viram "" com --plain ou saida nao-TTY)
+static const char *CR="\033[0m",*CB="\033[1m",*CD="\033[2m",*Cg="\033[32m",*Cy="\033[33m",
+                  *Cb="\033[38;5;39m",*Cc="\033[36m",*Co="\033[38;5;208m",*Ce="\033[38;5;214m",*Cr="\033[31m";
+static bool g_plain=false;
+static void clearColors(){ CR=CB=CD=Cg=Cy=Cb=Cc=Co=Ce=Cr=""; }
+static const char* tcol(unsigned int t){ if(g_plain) return ""; return t>=85?Cr:(t>=75?Cy:Cg); }
 static std::string rateStr(double r){ char b[48]; if(r>=1e9) sprintf(b,"%.2f G",r/1e9); else if(r>=1e6) sprintf(b,"%.2f M",r/1e6); else if(r>=1e3) sprintf(b,"%.1f k",r/1e3); else sprintf(b,"%.0f ",r); return b; }
 static std::string thou(unsigned long long v){ std::string s=std::to_string(v),o; int c=0; for(int i=(int)s.size()-1;i>=0;i--){ o=std::string(1,s[i])+o; if(++c%3==0&&i>0) o=","+o; } return o; }
 
 static void usage(){
     printf("BitcrackM — busca de minikeys Casascius S1 (Bitcrack-Minikeys-BR)\n");
     printf("uso: BitcrackM -list <enderecos.txt> [-s RESULTS.txt] [-b N -t N -p N]\n");
-    printf("               [-reduce <minikey22> <K>] [--naive]\n");
+    printf("               [-reduce <minikey22> <K>] [--naive] [--plain]\n");
+    printf("  --plain: sem cores/painel (auto quando a saida nao e um terminal)\n");
 }
 
 int main(int argc,char**argv){
@@ -333,10 +342,13 @@ int main(int argc,char**argv){
         else if(!strcmp(argv[i],"-t")&&i+1<argc) thr=atoi(argv[++i]);
         else if(!strcmp(argv[i],"-p")&&i+1<argc) ppt=atoi(argv[++i]);
         else if(!strcmp(argv[i],"--naive")) naive=true;
+        else if(!strcmp(argv[i],"--plain")) g_plain=true;
         else if(!strcmp(argv[i],"-reduce")&&i+2<argc){ reduceMk=argv[++i]; reduceK=atoi(argv[++i]); }
         else if(!strcmp(argv[i],"-h")||!strcmp(argv[i],"--help")){ usage(); return 0; }
     }
     if(!listPath){ usage(); return 1; }
+    if(!isatty(1)) g_plain=true;          // saida redirecionada (tee/arquivo) -> sem ANSI
+    if(g_plain) clearColors();
 
     // carrega os alvos
     FILE *f=fopen(listPath,"r"); if(!f){ printf("nao abri a lista: %s\n",listPath); return 1; }
@@ -372,13 +384,16 @@ int main(int argc,char**argv){
             char mk[23]; mk[0]='S'; for(int i=0;i<21;i++) mk[i+1]=HB58[h_hit.idx[i]]; mk[22]=0;
             char priv[65]; for(int i=0;i<8;i++) sprintf(priv+8*i,"%08x",h_hit.priv[i]); priv[64]=0;
             const std::string &addr=addrs[h_hit.tgt];
-            printf(">> ACHOU!\n   minikey : %s\n   privkey : %s\n   endereco: %s\n",mk,priv,addr.c_str());
+            printf("%s▸ ACHOU!%s\n",Cg,CR);
+            printf("   minikey : %s%s%s\n",Ce,mk,CR);
+            printf("   privkey : %s%s%s\n",Co,priv,CR);
+            printf("   endereco: %s%s%s\n",Cb,addr.c_str(),CR);
             if(savePath){ FILE *o=fopen(savePath,"a");
                 if(o){ fprintf(o,"%s  %s  %s\n",mk,priv,addr.c_str()); fclose(o);
-                       printf("   gravado em %s\n",savePath); }
-                else printf("   (nao consegui gravar em %s)\n",savePath); }
+                       printf("   %s✓ gravado em %s%s\n",Cg,savePath,CR); }
+                else printf("   %s(nao consegui gravar em %s)%s\n",Cr,savePath,CR); }
         } else {
-            printf("[parado] nenhuma chave encontrada — exatamente o esperado para 2^115.\n");
+            printf("%s[parado]%s nenhuma chave encontrada — exatamente o esperado para 2¹¹⁵.\n",Cy,CR);
         }
     };
 
@@ -404,7 +419,9 @@ int main(int argc,char**argv){
     unsigned long long totC=0,totT=0; double candRate=0,testRate=0;
     uint64_t seed=(uint64_t)time(NULL)*0x9E3779B97F4A7C15ULL;
     struct timespec ts0; clock_gettime(CLOCK_MONOTONIC,&ts0);
-    printf("busca COMPLETA no espaco 2^115 — Ctrl+C para parar\n\n");
+    const int PL=12;
+    if(g_plain) printf("busca COMPLETA no espaco 2^115 — Ctrl+C para parar\n");
+    else { printf("%sbusca COMPLETA no espaco 2^115 — Ctrl+C para parar%s\n",CD,CR); printf("\033[?25l"); for(int i=0;i<PL;i++) printf("\n"); }
     while(!g_stop && !h_hit.flag){
         seed=seed*6364136223846793005ULL+1442695040888963407ULL;
         cudaMemset(d_cnt,0,4);
@@ -421,10 +438,30 @@ int main(int argc,char**argv){
         totC+=candA; totT+=nval; if(msA>0) candRate=candA/(msA/1000.0); if(msB>0) testRate=nval/(msB/1000.0);
         cudaMemcpy(&h_hit,d_hit,sizeof(Hit),cudaMemcpyDeviceToHost);
         struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts); long el=(long)(ts.tv_sec-ts0.tv_sec);
-        printf("\r\033[K[%02ld:%02ld:%02ld] triagem %sH/s · teste %s keys/s · %s chaves testadas",
-               el/3600,(el%3600)/60,el%60,rateStr(candRate).c_str(),rateStr(testRate).c_str(),thou(totT).c_str());
+        unsigned int temp=0,clk=0; nvRead(temp,clk);
+        if(g_plain){
+            printf("\r[%02ld:%02ld:%02ld] triagem %sH/s · teste %s keys/s · %s chaves",
+                   el/3600,(el%3600)/60,el%60,rateStr(candRate).c_str(),rateStr(testRate).c_str(),thou(totT).c_str());
+            fflush(stdout); continue;
+        }
+        char tele[160]; if(g_nv) snprintf(tele,sizeof tele,"%s%u°C%s %s%u MHz%s",tcol(temp),temp,CR,CB,clk,CR); else snprintf(tele,sizeof tele,"%s-- °C  -- MHz%s",CD,CR);
+        printf("\033[%dA",PL);
+        printf("\r\033[K%s══════════ %s%sBitcrackM · Bitcrack-Minikeys-BR%s %s══════════%s\n",Cc,CR,CB,CR,Cc,CR);
+        printf("\r\033[K  %s%s%s  %s│%s  %s  %s│%s  alvos: %s%d%s  %s│%s  modo: %s%s%s\n",CB,prop.name,CR,CD,CR,tele,CD,CR,CB,ntgt,CR,CD,CR,naive?Cy:Cg,naive?"ingenuo":"otimizado",CR);
+        printf("\r\033[K  %s──────────────────────────────────────────────────%s\n",CD,CR);
+        printf("\r\033[K  %sTRIAGEM%s %s(SHA256 + filtro 0x00)%s\n",Cb,CR,CD,CR);
+        printf("\r\033[K     velocidade:  %s%sH/s%s\n",Cg,rateStr(candRate).c_str(),CR);
+        printf("\r\033[K     percorridas: %s%s%s candidatos\n",CB,thou(totC).c_str(),CR);
+        printf("\r\033[K  %s──────────────────────────────────────────────────%s\n",CD,CR);
+        printf("\r\033[K  %sTESTE%s   %s(comb de base fixa + inversao em lote + hash160)%s\n",Co,CR,CD,CR);
+        printf("\r\033[K     velocidade:  %s%s keys/s%s\n",Cg,rateStr(testRate).c_str(),CR);
+        printf("\r\033[K     percorridas: %s%s%s chaves\n",CB,thou(totT).c_str(),CR);
+        printf("\r\033[K  %s──────────────────────────────────────────────────%s\n",CD,CR);
+        printf("\r\033[K  %sdecorrido %02ld:%02ld:%02ld%s  %s·%s  espaco S1 = %s2¹¹⁵%s  %s·%s  %s→ %s%s  %s·%s  %sCtrl+C%s\n",
+               CD,el/3600,(el%3600)/60,el%60,CR,CD,CR,CB,CR,CD,CR,Cb,savePath?savePath:"(sem -s)",CR,CD,CR,CD,CR);
         fflush(stdout);
     }
+    if(!g_plain) printf("\033[?25h");
     report(h_hit.flag!=0);
     cudaFree(d_buf); cudaFree(d_cnt); cudaFree(d_tg); cudaFree(d_hit); return 0;
 }
